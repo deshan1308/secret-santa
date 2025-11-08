@@ -20,16 +20,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if number is already assigned
-    const { data: existingAssignment } = await supabase
+    // Check if number is already assigned (with error handling)
+    const { data: existingAssignment, error: checkError } = await supabase
       .from('assignments')
       .select('*')
       .eq('number', number)
-      .single()
+      .maybeSingle()
+
+    // If there's an error and it's not "not found", throw it
+    if (checkError && checkError.code !== 'PGRST116') {
+      throw checkError
+    }
 
     if (existingAssignment) {
       return NextResponse.json(
-        { error: 'Number is already assigned' },
+        { error: `Number ${number} is already assigned to another participant` },
         { status: 409 }
       )
     }
@@ -50,24 +55,40 @@ export async function POST(request: NextRequest) {
 
     // If participant already has a number, log it as reassignment
     if (participant.assigned_number !== null) {
-      await supabase.from('audit_logs').insert({
+      // Remove old assignment first
+      const { error: deleteError } = await supabase
+        .from('assignments')
+        .delete()
+        .eq('number', participant.assigned_number)
+      
+      if (deleteError) {
+        console.error('Error deleting old assignment:', deleteError)
+        throw new Error(`Failed to remove old assignment: ${deleteError.message}`)
+      }
+
+      // Log as reassignment
+      const { error: logError } = await supabase.from('audit_logs').insert({
         participant_id: participantId,
         action: 'reassigned',
         number: number,
       })
-
-      // Remove old assignment
-      await supabase
-        .from('assignments')
-        .delete()
-        .eq('number', participant.assigned_number)
+      
+      if (logError) {
+        console.error('Error logging reassignment:', logError)
+        // Don't throw here, as the assignment is more important than the log
+      }
     } else {
       // Log as new assignment
-      await supabase.from('audit_logs').insert({
+      const { error: logError } = await supabase.from('audit_logs').insert({
         participant_id: participantId,
         action: 'assigned',
         number: number,
       })
+      
+      if (logError) {
+        console.error('Error logging assignment:', logError)
+        // Don't throw here, as the assignment is more important than the log
+      }
     }
 
     // Update participant
@@ -83,19 +104,36 @@ export async function POST(request: NextRequest) {
     }
 
     // Create assignment
-    const { error: assignError } = await supabase
+    const { data: newAssignment, error: assignError } = await supabase
       .from('assignments')
       .insert({
         participant_id: participantId,
         number: number,
       })
+      .select()
+      .single()
 
     if (assignError) {
-      throw assignError
+      // If assignment creation fails, try to rollback participant update
+      await supabase
+        .from('participants')
+        .update({ assigned_number: participant.assigned_number })
+        .eq('id', participantId)
+      
+      throw new Error(`Failed to create assignment: ${assignError.message}`)
+    }
+
+    // Verify the assignment was created
+    if (!newAssignment) {
+      throw new Error('Assignment was not created successfully')
     }
 
     return NextResponse.json(
-      { participant: updatedParticipant },
+      { 
+        participant: updatedParticipant,
+        assignment: newAssignment,
+        message: 'Number assigned successfully'
+      },
       { status: 200 }
     )
   } catch (error: any) {

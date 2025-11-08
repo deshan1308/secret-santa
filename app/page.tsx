@@ -124,20 +124,38 @@ export default function Home() {
       const data = await response.json()
 
       if (!response.ok) {
-        setError(data.error || 'Failed to assign number. Please try again.')
+        const errorMsg = data.error || 'Failed to assign number. Please try again.'
+        console.error('Assignment error:', errorMsg, data)
+        setError(errorMsg)
         setIsLoading(false)
         // Refresh available numbers
         fetchAvailableNumbers()
         return
       }
 
+      // Verify we got the participant data back
+      if (!data.participant) {
+        console.error('No participant data returned from assignment')
+        setError('Assignment completed but data was not returned. Please refresh the page.')
+        setIsLoading(false)
+        fetchAvailableNumbers()
+        return
+      }
+
+      console.log('Assignment successful:', {
+        number,
+        participantId: data.participant.id,
+        assignment: data.assignment
+      })
+
       setAssignedNumber(number)
       setParticipant(data.participant)
       setIsLoading(false)
-      // Refresh available numbers
+      // Refresh available numbers immediately to remove assigned number from wheel
       fetchAvailableNumbers()
-    } catch (err) {
-      setError('Network error. Please check your connection and try again.')
+    } catch (err: any) {
+      console.error('Network error during assignment:', err)
+      setError(`Network error: ${err.message || 'Please check your connection and try again.'}`)
       setIsLoading(false)
       fetchAvailableNumbers()
     }
@@ -167,7 +185,7 @@ export default function Home() {
             Spin the wheel to get your unique number!
           </p>
           <Link
-            href="/admin"
+            href="/admin/login"
             className="inline-block mt-4 text-sm text-primary-600 dark:text-primary-400 hover:underline"
           >
             Admin Panel →

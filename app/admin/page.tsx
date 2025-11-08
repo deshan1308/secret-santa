@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import AdminLogin from '@/components/AdminLogin'
 
 interface Participant {
   id: string
@@ -23,18 +25,22 @@ interface AuditLog {
 }
 
 export default function AdminPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [participants, setParticipants] = useState<Participant[]>([])
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isResetting, setIsResetting] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [activeTab, setActiveTab] = useState<'assignments' | 'logs'>('assignments')
+  const router = useRouter()
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  const fetchData = async () => {
-    setIsLoading(true)
+  const fetchData = async (showLoading = false) => {
+    if (showLoading) {
+      setIsRefreshing(true)
+    } else {
+      setIsLoading(true)
+    }
     try {
       const [assignmentsRes, logsRes] = await Promise.all([
         fetch('/api/admin/assignments'),
@@ -44,13 +50,95 @@ export default function AdminPage() {
       const assignmentsData = await assignmentsRes.json()
       const logsData = await logsRes.json()
 
-      setParticipants(assignmentsData.participants || [])
-      setAuditLogs(logsData.logs || [])
+      if (assignmentsData.error) {
+        console.error('Error fetching assignments:', assignmentsData.error)
+      } else {
+        setParticipants(assignmentsData.participants || [])
+      }
+
+      if (logsData.error) {
+        console.error('Error fetching logs:', logsData.error)
+      } else {
+        setAuditLogs(logsData.logs || [])
+      }
     } catch (err) {
       console.error('Error fetching data:', err)
     } finally {
       setIsLoading(false)
+      setIsRefreshing(false)
     }
+  }
+
+  useEffect(() => {
+    // Check authentication
+    const checkAuth = () => {
+      if (typeof window !== 'undefined') {
+        const authenticated = sessionStorage.getItem('adminAuthenticated') === 'true'
+        setIsAuthenticated(authenticated)
+        setIsCheckingAuth(false)
+        
+        if (authenticated) {
+          fetchData()
+          
+          // Auto-refresh every 5 seconds to show latest assignments
+          const interval = setInterval(() => {
+            fetchData()
+          }, 5000)
+          
+          return () => clearInterval(interval)
+        }
+      }
+    }
+
+    const cleanup = checkAuth()
+    return cleanup
+  }, [])
+
+  const handleLogout = () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('adminAuthenticated')
+      sessionStorage.removeItem('adminLoginTime')
+      router.push('/admin/login')
+    }
+  }
+
+  // Show login page if not authenticated
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <svg
+            className="animate-spin h-12 w-12 text-primary-600 mx-auto"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            ></circle>
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Checking authentication...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return <AdminLogin />
+  }
+
+  const handleManualRefresh = () => {
+    fetchData(true)
   }
 
   const handleReset = async () => {
@@ -62,16 +150,31 @@ export default function AdminPage() {
     try {
       const response = await fetch('/api/admin/reset', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       })
 
+      const data = await response.json()
+
       if (!response.ok) {
-        throw new Error('Failed to reset assignments')
+        throw new Error(data.error || 'Failed to reset assignments')
       }
 
-      await fetchData()
-      alert('All assignments have been reset successfully!')
-    } catch (err) {
-      alert('Failed to reset assignments. Please try again.')
+      // Show success message with details
+      const deletedCount = data.deletedAssignments || 0
+      const resetCount = data.resetParticipants || 0
+      alert(`Reset successful!\n\n- Deleted ${deletedCount} assignment(s)\n- Reset ${resetCount} participant(s)`)
+      
+      // Refresh data immediately
+      await fetchData(true)
+      
+      // Small delay before reload to ensure data is refreshed
+      setTimeout(() => {
+        window.location.reload()
+      }, 500)
+    } catch (err: any) {
+      alert(`Failed to reset assignments: ${err.message || 'Please try again.'}`)
       console.error('Error resetting:', err)
     } finally {
       setIsResetting(false)
@@ -100,13 +203,63 @@ export default function AdminPage() {
                 Manage assignments and track activity
               </p>
             </div>
-            <div className="flex gap-4">
+            <div className="flex gap-4 flex-wrap">
               <Link
                 href="/"
                 className="px-4 py-2 text-primary-600 dark:text-primary-400 hover:underline"
               >
                 ← Back to Wheel
               </Link>
+              <motion.button
+                onClick={handleManualRefresh}
+                disabled={isRefreshing}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+              >
+                {isRefreshing ? (
+                  <>
+                    <svg
+                      className="animate-spin h-4 w-4"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    Refreshing...
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                      />
+                    </svg>
+                    Refresh
+                  </>
+                )}
+              </motion.button>
               <motion.button
                 onClick={handleReset}
                 disabled={isResetting}
@@ -115,6 +268,27 @@ export default function AdminPage() {
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 {isResetting ? 'Resetting...' : 'Reset All'}
+              </motion.button>
+              <motion.button
+                onClick={handleLogout}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-all flex items-center gap-2"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                  />
+                </svg>
+                Logout
               </motion.button>
             </div>
           </div>
@@ -176,9 +350,14 @@ export default function AdminPage() {
             <div className="overflow-x-auto">
               {participants.length === 0 ? (
                 <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                  No assignments yet. Participants will appear here after they spin the wheel.
+                  <p className="mb-2">No assignments yet.</p>
+                  <p className="text-sm">Participants will appear here after they spin the wheel.</p>
                 </div>
               ) : (
+                <>
+                <div className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+                  Total Assignments: <span className="font-semibold">{participants.length}</span>
+                </div>
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-200 dark:border-gray-700">
@@ -223,6 +402,7 @@ export default function AdminPage() {
                     ))}
                   </tbody>
                 </table>
+                </>
               )}
             </div>
           ) : (
