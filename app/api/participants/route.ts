@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, checkSupabaseEnv } from '@/lib/supabase'
 
 export async function POST(request: NextRequest) {
+  const envCheck = checkSupabaseEnv()
+  if (!envCheck.isValid) {
+    return NextResponse.json(
+      { error: envCheck.error },
+      { status: 500 }
+    )
+  }
+
   try {
     const { name, employeeId } = await request.json()
 
@@ -54,6 +62,14 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const envCheck = checkSupabaseEnv()
+  if (!envCheck.isValid) {
+    return NextResponse.json(
+      { error: envCheck.error },
+      { status: 500 }
+    )
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const employeeId = searchParams.get('employee_id')

@@ -1,10 +1,18 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, checkSupabaseEnv } from '@/lib/supabase'
 
 // Define the range of available numbers (1-100)
 const TOTAL_NUMBERS = 100
 
 export async function GET() {
+  const envCheck = checkSupabaseEnv()
+  if (!envCheck.isValid) {
+    return NextResponse.json(
+      { error: envCheck.error, available: [], total: TOTAL_NUMBERS, assigned: 0 },
+      { status: 500 }
+    )
+  }
+
   try {
     // Get all assigned numbers
     const { data: assignments, error } = await supabase

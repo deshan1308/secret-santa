@@ -116,7 +116,7 @@ export default function AssignedResult({
           transition={{ delay: 0.6 }}
           className="text-sm text-gray-500 dark:text-gray-500 italic"
         >
-          You've already received your number. Thank you for participating!
+          You&apos;ve already received your number. Thank you for participating!
         </motion.p>
       )}
     </motion.div>

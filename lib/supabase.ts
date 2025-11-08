@@ -1,13 +1,53 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+let supabaseClient: SupabaseClient | null = null
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables')
+function getSupabaseClient(): SupabaseClient {
+  if (supabaseClient) {
+    return supabaseClient
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    // Provide dummy values for build time
+    // Runtime errors will be handled by API routes
+    supabaseClient = createClient(
+      supabaseUrl || 'https://placeholder.supabase.co',
+      supabaseAnonKey || 'placeholder-key'
+    )
+    return supabaseClient
+  }
+
+  supabaseClient = createClient(supabaseUrl, supabaseAnonKey)
+  return supabaseClient
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export function checkSupabaseEnv(): { isValid: boolean; error?: string } {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return {
+      isValid: false,
+      error: 'Missing Supabase environment variables. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY',
+    }
+  }
+
+  return { isValid: true }
+}
+
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    const client = getSupabaseClient()
+    const value = (client as any)[prop]
+    if (typeof value === 'function') {
+      return value.bind(client)
+    }
+    return value
+  },
+})
 
 export interface Participant {
   id: string
