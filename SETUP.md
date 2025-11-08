@@ -52,10 +52,21 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 1. Push your code to a GitHub repository
 2. Go to [vercel.com](https://vercel.com) and import your repository
-3. Add your environment variables:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-4. Deploy!
+3. **Add your environment variables in Vercel:**
+   - After importing your project, go to **Settings** → **Environment Variables**
+   - Click **Add New**
+   - Add the following variables:
+     - **Name:** `NEXT_PUBLIC_SUPABASE_URL`
+     - **Value:** `https://qudeafymripwfekgdsst.supabase.co`
+     - **Environment:** Select all (Production, Preview, Development)
+     - Click **Save**
+   - Add the second variable:
+     - **Name:** `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+     - **Value:** `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1ZGVhZnltcmlwd2Zla2dkc3N0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1NjY0ODksImV4cCI6MjA3ODE0MjQ4OX0.R9qghlThoJ71lWZH1A0bYnqPSrsfbyxOgvmDvv7sRV0`
+     - **Environment:** Select all (Production, Preview, Development)
+     - Click **Save**
+4. Go to **Deployments** tab and redeploy your application (or trigger a new deployment)
+5. Your app should now work with Supabase!
 
 ## Features
 
