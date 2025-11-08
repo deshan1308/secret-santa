@@ -49,18 +49,30 @@ export default function AdminPage() {
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
           },
         }),
         fetch(`/api/admin/audit-logs?t=${timestamp}`, {
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
           },
         }),
       ])
 
+      if (!assignmentsRes.ok) {
+        throw new Error(`Failed to fetch assignments: ${assignmentsRes.status} ${assignmentsRes.statusText}`)
+      }
+
+      if (!logsRes.ok) {
+        console.warn(`Failed to fetch logs: ${logsRes.status} ${logsRes.statusText}`)
+      }
+
       const assignmentsData = await assignmentsRes.json()
       const logsData = await logsRes.json()
+      
+      console.log('Raw assignments response:', assignmentsData)
 
       if (assignmentsData.error) {
         console.error('Error fetching assignments:', assignmentsData.error)

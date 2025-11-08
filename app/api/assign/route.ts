@@ -140,6 +140,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Double-check: Verify both participant and assignment exist
+    // Wait a moment for database to sync
+    await new Promise(resolve => setTimeout(resolve, 200))
+    
     const { data: verifyParticipant, error: verifyError } = await supabase
       .from('participants')
       .select('*')
@@ -150,6 +153,11 @@ export async function POST(request: NextRequest) {
       console.error('Verification error:', verifyError)
     } else if (verifyParticipant.assigned_number !== number) {
       console.error(`Verification mismatch: participant has ${verifyParticipant.assigned_number}, expected ${number}`)
+      // Try to fix it
+      await supabase
+        .from('participants')
+        .update({ assigned_number: number })
+        .eq('id', participantId)
     }
 
     const { data: verifyAssignment } = await supabase
@@ -160,13 +168,29 @@ export async function POST(request: NextRequest) {
 
     if (!verifyAssignment) {
       console.error('Assignment verification failed: assignment not found after creation')
+      // Try to recreate it
+      const { data: recreateAssignment, error: recreateError } = await supabase
+        .from('assignments')
+        .insert({
+          participant_id: participantId,
+          number: number,
+        })
+        .select()
+        .single()
+      
+      if (recreateError) {
+        console.error('Failed to recreate assignment:', recreateError)
+      } else {
+        console.log('Recreated assignment:', recreateAssignment)
+      }
     }
 
     console.log('Assignment completed successfully:', {
       participantId,
       number,
       participantAssignedNumber: updatedParticipant.assigned_number,
-      assignmentId: newAssignment.id
+      assignmentId: newAssignment.id,
+      verified: !!verifyAssignment && verifyParticipant?.assigned_number === number
     })
 
     return NextResponse.json(
