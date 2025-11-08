@@ -100,7 +100,17 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (updateError) {
-      throw updateError
+      console.error('Error updating participant:', updateError)
+      throw new Error(`Failed to update participant: ${updateError.message}`)
+    }
+
+    if (!updatedParticipant) {
+      throw new Error('Participant was not updated successfully')
+    }
+
+    // Verify the participant was updated correctly
+    if (updatedParticipant.assigned_number !== number) {
+      throw new Error(`Participant update mismatch: expected ${number}, got ${updatedParticipant.assigned_number}`)
     }
 
     // Create assignment
@@ -114,6 +124,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (assignError) {
+      console.error('Error creating assignment:', assignError)
       // If assignment creation fails, try to rollback participant update
       await supabase
         .from('participants')
@@ -127,6 +138,36 @@ export async function POST(request: NextRequest) {
     if (!newAssignment) {
       throw new Error('Assignment was not created successfully')
     }
+
+    // Double-check: Verify both participant and assignment exist
+    const { data: verifyParticipant, error: verifyError } = await supabase
+      .from('participants')
+      .select('*')
+      .eq('id', participantId)
+      .single()
+
+    if (verifyError || !verifyParticipant) {
+      console.error('Verification error:', verifyError)
+    } else if (verifyParticipant.assigned_number !== number) {
+      console.error(`Verification mismatch: participant has ${verifyParticipant.assigned_number}, expected ${number}`)
+    }
+
+    const { data: verifyAssignment } = await supabase
+      .from('assignments')
+      .select('*')
+      .eq('number', number)
+      .single()
+
+    if (!verifyAssignment) {
+      console.error('Assignment verification failed: assignment not found after creation')
+    }
+
+    console.log('Assignment completed successfully:', {
+      participantId,
+      number,
+      participantAssignedNumber: updatedParticipant.assigned_number,
+      assignmentId: newAssignment.id
+    })
 
     return NextResponse.json(
       { 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
 
 interface SpinWheelProps {
@@ -45,29 +45,7 @@ export default function SpinWheel({
     }
   }, [])
 
-  useEffect(() => {
-    // Delay initial draw to ensure canvas is rendered
-    const timer = setTimeout(() => {
-      drawWheel()
-    }, 100)
-    
-    // Handle window resize
-    const handleResize = () => {
-      setTimeout(() => drawWheel(), 100)
-    }
-    
-    if (typeof window !== 'undefined') {
-      window.addEventListener('resize', handleResize)
-      return () => {
-        clearTimeout(timer)
-        window.removeEventListener('resize', handleResize)
-      }
-    }
-    
-    return () => clearTimeout(timer)
-  }, [availableNumbers])
-
-  const drawWheel = () => {
+  const drawWheel = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
@@ -178,7 +156,29 @@ export default function SpinWheel({
     ctx.strokeStyle = '#000000'
     ctx.lineWidth = Math.max(2, Math.min(4, radius / 100))
     ctx.stroke()
-  }
+  }, [availableNumbers])
+
+  useEffect(() => {
+    // Delay initial draw to ensure canvas is rendered
+    const timer = setTimeout(() => {
+      drawWheel()
+    }, 100)
+    
+    // Handle window resize
+    const handleResize = () => {
+      setTimeout(() => drawWheel(), 100)
+    }
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', handleResize)
+      return () => {
+        clearTimeout(timer)
+        window.removeEventListener('resize', handleResize)
+      }
+    }
+    
+    return () => clearTimeout(timer)
+  }, [availableNumbers, drawWheel])
 
   const playSpinSound = () => {
     if (spinAudioRef.current) {

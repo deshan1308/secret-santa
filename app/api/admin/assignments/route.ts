@@ -19,7 +19,7 @@ export async function GET() {
       .order('updated_at', { ascending: false }) // Order by most recently updated first
 
     if (error) {
-      console.error('Error fetching assignments:', error)
+      console.error('Error fetching participants:', error)
       throw error
     }
 
@@ -31,6 +31,26 @@ export async function GET() {
 
     if (assignmentsError) {
       console.error('Error fetching assignments table:', assignmentsError)
+    }
+
+    // Log for debugging
+    console.log('Admin assignments fetch:', {
+      participantsCount: participants?.length || 0,
+      assignmentsCount: assignments?.length || 0,
+      participants: participants?.map(p => ({ id: p.id, name: p.name, number: p.assigned_number })) || []
+    })
+
+    // If there's a mismatch, log it but still return participants
+    if (participants && assignments) {
+      const participantNumbers = new Set(participants.map(p => p.assigned_number).filter(n => n !== null))
+      const assignmentNumbers = new Set(assignments.map(a => a.number))
+      
+      if (participantNumbers.size !== assignmentNumbers.size) {
+        console.warn('Mismatch detected:', {
+          participantNumbers: Array.from(participantNumbers),
+          assignmentNumbers: Array.from(assignmentNumbers)
+        })
+      }
     }
 
     return NextResponse.json({ 

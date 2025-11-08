@@ -67,8 +67,25 @@ export default function AdminPage() {
         setParticipants([])
       } else {
         const participantsList = assignmentsData.participants || []
-        console.log(`Fetched ${participantsList.length} assignments at ${assignmentsData.timestamp || 'unknown time'}`)
-        setParticipants(participantsList)
+        console.log(`Admin Panel: Fetched ${participantsList.length} assignments at ${assignmentsData.timestamp || 'unknown time'}`)
+        console.log('Participants data:', participantsList.map((p: Participant) => ({
+          id: p.id,
+          name: p.name,
+          employee_id: p.employee_id,
+          assigned_number: p.assigned_number,
+          updated_at: p.updated_at
+        })))
+        
+        // Verify we have valid participants
+        const validParticipants = participantsList.filter((p: Participant) => 
+          p && p.assigned_number !== null && p.assigned_number !== undefined
+        )
+        
+        if (validParticipants.length !== participantsList.length) {
+          console.warn(`Filtered out ${participantsList.length - validParticipants.length} invalid participants`)
+        }
+        
+        setParticipants(validParticipants)
       }
 
       if (logsData.error) {
