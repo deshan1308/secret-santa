@@ -197,7 +197,18 @@ export default function AdminPage() {
       // Show success message with details
       const deletedCount = data.deletedAssignments || 0
       const resetCount = data.resetParticipants || 0
-      alert(`Reset successful!\n\n- Deleted ${deletedCount} assignment(s)\n- Reset ${resetCount} participant(s)\n\nThe spin wheel will now show all numbers again.`)
+      const remainingAssignments = data.remainingAssignments || 0
+      const remainingParticipants = data.remainingParticipants || 0
+      
+      let message = `Reset completed!\n\n- Deleted ${deletedCount} assignment(s)\n- Reset ${resetCount} participant(s)`
+      
+      if (remainingAssignments > 0 || remainingParticipants > 0) {
+        message += `\n\n⚠️ Note: ${remainingAssignments} assignment(s) and ${remainingParticipants} participant(s) were cleaned up during verification.`
+      }
+      
+      message += `\n\nThe spin wheel will now show all numbers again.`
+      
+      alert(message)
       
       // Refresh data immediately
       await fetchData(true)

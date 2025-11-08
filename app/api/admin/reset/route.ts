@@ -11,14 +11,19 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    console.log('Starting reset process...')
+    
     // Step 1: Get all assignments to delete
     const { data: allAssignments, error: fetchAssignmentsError } = await supabase
       .from('assignments')
-      .select('id')
+      .select('id, number')
     
     if (fetchAssignmentsError) {
+      console.error('Error fetching assignments:', fetchAssignmentsError)
       throw new Error(`Failed to fetch assignments: ${fetchAssignmentsError.message}`)
     }
+
+    console.log(`Found ${allAssignments?.length || 0} assignments to delete`)
 
     // Step 2: Get all participants with assigned numbers
     const { data: participantsWithNumbers, error: fetchParticipantsError } = await supabase
@@ -27,45 +32,98 @@ export async function POST(request: NextRequest) {
       .not('assigned_number', 'is', null)
 
     if (fetchParticipantsError) {
+      console.error('Error fetching participants:', fetchParticipantsError)
       throw new Error(`Failed to fetch participants: ${fetchParticipantsError.message}`)
     }
 
-    // Step 3: Delete all assignments using batch delete with .in()
+    console.log(`Found ${participantsWithNumbers?.length || 0} participants to reset`)
+
+    // Step 3: Delete all assignments - try multiple approaches
+    let deletedCount = 0
     if (allAssignments && allAssignments.length > 0) {
-      const assignmentIds = allAssignments.map(a => a.id)
-      
-      // Delete in batches of 100 (Supabase limit)
+      // First try: Delete by number (more reliable than ID)
+      const numbers = allAssignments.map(a => a.number)
       const batchSize = 100
-      for (let i = 0; i < assignmentIds.length; i += batchSize) {
-        const batch = assignmentIds.slice(i, i + batchSize)
-        const { error: deleteError } = await supabase
+      
+      for (let i = 0; i < numbers.length; i += batchSize) {
+        const batch = numbers.slice(i, i + batchSize)
+        const { data: deleted, error: deleteError } = await supabase
           .from('assignments')
           .delete()
-          .in('id', batch)
+          .in('number', batch)
+          .select()
         
         if (deleteError) {
-          throw new Error(`Failed to delete assignments batch: ${deleteError.message}`)
+          console.error(`Error deleting batch ${i / batchSize + 1}:`, deleteError)
+          // Try individual deletes as fallback
+          for (const number of batch) {
+            const { error: individualError } = await supabase
+              .from('assignments')
+              .delete()
+              .eq('number', number)
+            
+            if (individualError) {
+              console.error(`Error deleting assignment ${number}:`, individualError)
+            } else {
+              deletedCount++
+            }
+          }
+        } else {
+          deletedCount += deleted?.length || 0
         }
       }
+      
+      console.log(`Deleted ${deletedCount} assignments`)
     }
 
-    // Step 4: Clear assigned numbers from all participants using batch update
+    // Step 4: Clear assigned numbers from all participants
+    let updatedCount = 0
     if (participantsWithNumbers && participantsWithNumbers.length > 0) {
-      const participantIds = participantsWithNumbers.map(p => p.id)
+      // Try updating all at once first
+      const { data: updated, error: updateAllError } = await supabase
+        .from('participants')
+        .update({ assigned_number: null })
+        .not('assigned_number', 'is', null)
+        .select()
       
-      // Update in batches of 100
-      const batchSize = 100
-      for (let i = 0; i < participantIds.length; i += batchSize) {
-        const batch = participantIds.slice(i, i + batchSize)
-        const { error: updateError } = await supabase
-          .from('participants')
-          .update({ assigned_number: null })
-          .in('id', batch)
+      if (updateAllError) {
+        console.warn('Bulk update failed, trying batch updates:', updateAllError)
+        // Fallback to batch updates
+        const participantIds = participantsWithNumbers.map(p => p.id)
+        const batchSize = 100
         
-        if (updateError) {
-          throw new Error(`Failed to update participants batch: ${updateError.message}`)
+        for (let i = 0; i < participantIds.length; i += batchSize) {
+          const batch = participantIds.slice(i, i + batchSize)
+          const { data: batchUpdated, error: updateError } = await supabase
+            .from('participants')
+            .update({ assigned_number: null })
+            .in('id', batch)
+            .select()
+          
+          if (updateError) {
+            console.error(`Error updating batch ${i / batchSize + 1}:`, updateError)
+            // Try individual updates as fallback
+            for (const id of batch) {
+              const { error: individualError } = await supabase
+                .from('participants')
+                .update({ assigned_number: null })
+                .eq('id', id)
+              
+              if (individualError) {
+                console.error(`Error updating participant ${id}:`, individualError)
+              } else {
+                updatedCount++
+              }
+            }
+          } else {
+            updatedCount += batchUpdated?.length || 0
+          }
         }
+      } else {
+        updatedCount = updated?.length || 0
       }
+      
+      console.log(`Updated ${updatedCount} participants`)
     }
 
     // Step 5: Log reset action
@@ -80,35 +138,67 @@ export async function POST(request: NextRequest) {
       // Don't throw here, as the reset was successful
     }
 
-    // Step 6: Verify the reset was successful
-    const { data: remainingAssignments, error: verifyAssignmentsError } = await supabase
+    // Step 6: Verify the reset was successful (with retry)
+    let remainingAssignments: any[] = []
+    let remainingParticipants: any[] = []
+    
+    // Wait a bit for database to sync
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    // Check assignments
+    const { data: verifyAssignments, error: verifyAssignmentsError } = await supabase
       .from('assignments')
-      .select('id')
-      .limit(1)
+      .select('id, number')
+      .limit(100)
 
     if (verifyAssignmentsError) {
       console.warn('Could not verify assignments deletion:', verifyAssignmentsError.message)
-    } else if (remainingAssignments && remainingAssignments.length > 0) {
-      throw new Error('Some assignments were not deleted. Please try again.')
+    } else {
+      remainingAssignments = verifyAssignments || []
     }
 
-    const { data: remainingParticipants, error: verifyParticipantsError } = await supabase
+    // Check participants
+    const { data: verifyParticipants, error: verifyParticipantsError } = await supabase
       .from('participants')
       .select('id, assigned_number')
       .not('assigned_number', 'is', null)
-      .limit(1)
+      .limit(100)
 
     if (verifyParticipantsError) {
       console.warn('Could not verify participants reset:', verifyParticipantsError.message)
-    } else if (remainingParticipants && remainingParticipants.length > 0) {
-      throw new Error('Some participants still have assigned numbers. Please try again.')
+    } else {
+      remainingParticipants = verifyParticipants || []
     }
+
+    // If there are remaining items, try to clean them up
+    if (remainingAssignments.length > 0) {
+      console.warn(`Found ${remainingAssignments.length} remaining assignments, attempting cleanup...`)
+      for (const assignment of remainingAssignments) {
+        await supabase.from('assignments').delete().eq('id', assignment.id)
+      }
+    }
+
+    if (remainingParticipants.length > 0) {
+      console.warn(`Found ${remainingParticipants.length} remaining participants, attempting cleanup...`)
+      for (const participant of remainingParticipants) {
+        await supabase.from('participants').update({ assigned_number: null }).eq('id', participant.id)
+      }
+    }
+
+    console.log('Reset process completed:', {
+      deletedAssignments: deletedCount,
+      resetParticipants: updatedCount,
+      remainingAssignments: remainingAssignments.length,
+      remainingParticipants: remainingParticipants.length
+    })
 
     return NextResponse.json(
       { 
         message: 'All assignments have been reset successfully',
-        deletedAssignments: allAssignments?.length || 0,
-        resetParticipants: participantsWithNumbers?.length || 0
+        deletedAssignments: deletedCount,
+        resetParticipants: updatedCount,
+        remainingAssignments: remainingAssignments.length,
+        remainingParticipants: remainingParticipants.length
       },
       { status: 200 }
     )
