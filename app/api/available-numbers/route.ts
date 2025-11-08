@@ -1,10 +1,10 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabase, checkSupabaseEnv } from '@/lib/supabase'
 
 // Define the range of available numbers (1-100)
 const TOTAL_NUMBERS = 100
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const envCheck = checkSupabaseEnv()
   if (!envCheck.isValid) {
     return NextResponse.json(
@@ -14,10 +14,11 @@ export async function GET() {
   }
 
   try {
-    // Get all assigned numbers
+    // Get all assigned numbers with cache-busting
     const { data: assignments, error } = await supabase
       .from('assignments')
       .select('number')
+      .order('number', { ascending: true })
 
     if (error) {
       throw error

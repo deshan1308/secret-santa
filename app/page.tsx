@@ -31,6 +31,36 @@ export default function Home() {
       fetchParticipant(storedEmployeeId)
     }
     fetchAvailableNumbers()
+    
+    // Listen for reset events from admin panel
+    let channel: BroadcastChannel | null = null
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      channel = new BroadcastChannel('secret-santa-reset')
+      channel.onmessage = (event) => {
+        if (event.data.type === 'reset') {
+          console.log('Reset detected, refreshing available numbers...')
+          // Immediately refresh available numbers when reset happens
+          fetchAvailableNumbers()
+          // Also clear any assigned number state if user is viewing
+          setAssignedNumber(null)
+          setParticipant(null)
+          sessionStorage.removeItem('employeeId')
+        }
+      }
+    }
+    
+    // Poll for available numbers changes (in case admin resets or other changes)
+    // This ensures the wheel updates when reset happens
+    const interval = setInterval(() => {
+      fetchAvailableNumbers()
+    }, 3000) // Check every 3 seconds
+    
+    return () => {
+      if (channel) {
+        channel.close()
+      }
+      clearInterval(interval)
+    }
   }, [])
 
   const fetchParticipant = async (employeeId: string) => {
@@ -50,9 +80,18 @@ export default function Home() {
 
   const fetchAvailableNumbers = async () => {
     try {
-      const response = await fetch('/api/available-numbers')
+      // Add cache-busting to ensure fresh data
+      const timestamp = new Date().getTime()
+      const response = await fetch(`/api/available-numbers?t=${timestamp}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      })
       const data = await response.json()
-      setAvailableNumbers(data.available || [])
+      const newAvailableNumbers = data.available || []
+      console.log(`Fetched ${newAvailableNumbers.length} available numbers`)
+      setAvailableNumbers(newAvailableNumbers)
     } catch (err) {
       console.error('Error fetching available numbers:', err)
     }
@@ -151,8 +190,12 @@ export default function Home() {
       setAssignedNumber(number)
       setParticipant(data.participant)
       setIsLoading(false)
-      // Refresh available numbers immediately to remove assigned number from wheel
-      fetchAvailableNumbers()
+      
+      // Immediately refresh available numbers to remove assigned number from wheel
+      // Use a small delay to ensure database has updated
+      setTimeout(() => {
+        fetchAvailableNumbers()
+      }, 500)
     } catch (err: any) {
       console.error('Network error during assignment:', err)
       setError(`Network error: ${err.message || 'Please check your connection and try again.'}`)

@@ -42,9 +42,21 @@ export default function AdminPage() {
       setIsLoading(true)
     }
     try {
+      // Add cache-busting timestamp to ensure fresh data
+      const timestamp = new Date().getTime()
       const [assignmentsRes, logsRes] = await Promise.all([
-        fetch('/api/admin/assignments'),
-        fetch('/api/admin/audit-logs'),
+        fetch(`/api/admin/assignments?t=${timestamp}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+          },
+        }),
+        fetch(`/api/admin/audit-logs?t=${timestamp}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+          },
+        }),
       ])
 
       const assignmentsData = await assignmentsRes.json()
@@ -52,12 +64,16 @@ export default function AdminPage() {
 
       if (assignmentsData.error) {
         console.error('Error fetching assignments:', assignmentsData.error)
+        setParticipants([])
       } else {
-        setParticipants(assignmentsData.participants || [])
+        const participantsList = assignmentsData.participants || []
+        console.log(`Fetched ${participantsList.length} assignments at ${assignmentsData.timestamp || 'unknown time'}`)
+        setParticipants(participantsList)
       }
 
       if (logsData.error) {
         console.error('Error fetching logs:', logsData.error)
+        setAuditLogs([])
       } else {
         setAuditLogs(logsData.logs || [])
       }
@@ -80,10 +96,10 @@ export default function AdminPage() {
         if (authenticated) {
           fetchData()
           
-          // Auto-refresh every 5 seconds to show latest assignments
+          // Auto-refresh every 3 seconds to show latest assignments (more frequent)
           const interval = setInterval(() => {
-            fetchData()
-          }, 5000)
+            fetchData(false) // Don't show loading spinner on auto-refresh
+          }, 3000)
           
           return () => clearInterval(interval)
         }
@@ -164,10 +180,17 @@ export default function AdminPage() {
       // Show success message with details
       const deletedCount = data.deletedAssignments || 0
       const resetCount = data.resetParticipants || 0
-      alert(`Reset successful!\n\n- Deleted ${deletedCount} assignment(s)\n- Reset ${resetCount} participant(s)`)
+      alert(`Reset successful!\n\n- Deleted ${deletedCount} assignment(s)\n- Reset ${resetCount} participant(s)\n\nThe spin wheel will now show all numbers again.`)
       
       // Refresh data immediately
       await fetchData(true)
+      
+      // Notify other tabs/windows about the reset using BroadcastChannel
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const channel = new BroadcastChannel('secret-santa-reset')
+        channel.postMessage({ type: 'reset', timestamp: Date.now() })
+        channel.close()
+      }
       
       // Small delay before reload to ensure data is refreshed
       setTimeout(() => {
@@ -355,8 +378,13 @@ export default function AdminPage() {
                 </div>
               ) : (
                 <>
-                <div className="mb-4 text-sm text-gray-600 dark:text-gray-400">
-                  Total Assignments: <span className="font-semibold">{participants.length}</span>
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    Total Assignments: <span className="font-semibold">{participants.length}</span>
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-500">
+                    Auto-refreshes every 3 seconds
+                  </div>
                 </div>
                 <table className="w-full">
                   <thead>
@@ -378,7 +406,7 @@ export default function AdminPage() {
                   <tbody>
                     {participants.map((participant, index) => (
                       <motion.tr
-                        key={participant.id}
+                        key={`${participant.id}-${participant.assigned_number}-${participant.updated_at}`}
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.05 }}

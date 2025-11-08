@@ -76,8 +76,8 @@ export default function SpinWheel({
 
     // Get actual display size
     const rect = canvas.getBoundingClientRect()
-    const displayWidth = rect.width || 400
-    const displayHeight = rect.height || 400
+    const displayWidth = rect.width || 700
+    const displayHeight = rect.height || 700
     
     // Set actual size in memory (scaled up for retina displays)
     const scale = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1
@@ -126,10 +126,10 @@ export default function SpinWheel({
       ctx.fillStyle = COLORS[index % COLORS.length]
       ctx.fill()
       ctx.strokeStyle = '#FFFFFF'
-      ctx.lineWidth = 2
+      ctx.lineWidth = Math.max(2, Math.min(4, radius / 100)) // Thicker borders for bigger wheel
       ctx.stroke()
 
-      // Draw number text
+      // Draw number text with better visibility
       const textAngle = startAngle + anglePerSegment / 2
       const textX = centerX + Math.cos(textAngle) * (radius * 0.7)
       const textY = centerY + Math.sin(textAngle) * (radius * 0.7)
@@ -137,29 +137,37 @@ export default function SpinWheel({
       ctx.save()
       ctx.translate(textX, textY)
       ctx.rotate(textAngle + Math.PI / 2)
-      ctx.fillStyle = '#FFFFFF'
-      // Responsive font size
-      const fontSize = Math.max(12, Math.min(16, radius / 15))
+      
+      // Calculate responsive font size (larger for bigger wheel)
+      const fontSize = Math.max(18, Math.min(32, radius / 12))
       ctx.font = `bold ${fontSize}px Arial`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
+      
+      // Draw text shadow/outline for better visibility
+      ctx.strokeStyle = '#000000'
+      ctx.lineWidth = Math.max(2, fontSize / 10)
+      ctx.strokeText(number.toString(), 0, 0)
+      
+      // Draw main text in white
+      ctx.fillStyle = '#FFFFFF'
       ctx.fillText(number.toString(), 0, 0)
       ctx.restore()
     })
 
-    // Draw center circle (responsive size)
-    const centerRadius = Math.max(20, Math.min(30, radius / 10))
+    // Draw center circle (responsive size - larger for bigger wheel)
+    const centerRadius = Math.max(30, Math.min(50, radius / 8))
     ctx.beginPath()
     ctx.arc(centerX, centerY, centerRadius, 0, Math.PI * 2)
     ctx.fillStyle = '#FFFFFF'
     ctx.fill()
     ctx.strokeStyle = '#000000'
-    ctx.lineWidth = Math.max(2, Math.min(3, radius / 100))
+    ctx.lineWidth = Math.max(3, Math.min(5, radius / 80))
     ctx.stroke()
 
-    // Draw pointer (responsive size)
-    const pointerSize = Math.max(10, Math.min(15, radius / 20))
-    const pointerHeight = Math.max(20, Math.min(30, radius / 10))
+    // Draw pointer (responsive size - larger for bigger wheel)
+    const pointerSize = Math.max(15, Math.min(25, radius / 15))
+    const pointerHeight = Math.max(30, Math.min(50, radius / 8))
     ctx.beginPath()
     ctx.moveTo(centerX, centerY - radius - pointerSize)
     ctx.lineTo(centerX - pointerSize, centerY - radius - pointerHeight)
@@ -168,7 +176,7 @@ export default function SpinWheel({
     ctx.fillStyle = '#FF0000'
     ctx.fill()
     ctx.strokeStyle = '#000000'
-    ctx.lineWidth = Math.max(1, Math.min(2, radius / 150))
+    ctx.lineWidth = Math.max(2, Math.min(4, radius / 100))
     ctx.stroke()
   }
 
@@ -243,11 +251,11 @@ export default function SpinWheel({
 
   return (
     <div className="flex flex-col items-center space-y-6">
-      <div className="relative w-full max-w-[400px] aspect-square">
+      <div className="relative w-full max-w-[600px] md:max-w-[700px] aspect-square">
         <motion.canvas
           ref={canvasRef}
-          width={400}
-          height={400}
+          width={700}
+          height={700}
           className="w-full h-full rounded-full shadow-2xl"
           animate={{ rotate: rotation }}
           transition={{
